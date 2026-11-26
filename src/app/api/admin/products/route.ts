@@ -338,4 +338,59 @@ export async function PATCH(request: Request) {
     );
   }
 }
+export async function DELETE(request: Request) {
+  try {
+    const { response } = await requireAdmin();
+    if (response) return response;
 
+    const body = await request.json();
+    const { id } = body;
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, message: "Product ID is required." },
+        { status: 400 }
+      );
+    }
+
+    const supabase = createAdminClient();
+
+    const { data, error } = await supabase
+      .from("products")
+      .update({
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .select("id, name, is_active")
+      .maybeSingle();
+
+    if (error) {
+      console.error("Product deactivation error:", error);
+      return NextResponse.json(
+        { success: false, message: "Unable to deactivate product." },
+        { status: 500 }
+      );
+    }
+
+    if (!data) {
+      return NextResponse.json(
+        { success: false, message: "Product not found." },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Product deactivated successfully.",
+      product: data,
+    });
+  } catch (error) {
+    console.error("DELETE product error:", error);
+
+    return NextResponse.json(
+      { success: false, message: "Internal server error." },
+      { status: 500 }
+    );
+  }
+}

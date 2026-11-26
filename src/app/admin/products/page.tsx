@@ -8,7 +8,6 @@ import {
   Plus,
   Package,
   Pencil,
-  Trash2,
 } from "lucide-react";
 
 type Product = {
@@ -33,6 +32,9 @@ export default function AdminProductsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(
+    null
+  );
 
   const loadProducts = useCallback(async () => {
     setLoading(true);
@@ -62,6 +64,52 @@ export default function AdminProductsPage() {
   useEffect(() => {
     void loadProducts();
   }, [loadProducts]);
+
+  const handleStatusToggle = async (product: Product) => {
+    const newStatus = !product.is_active;
+
+    const confirmed = window.confirm(
+      `Are you sure you want to ${
+        newStatus ? "activate" : "deactivate"
+      } "${product.name}"?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setStatusUpdatingId(product.id);
+      setError("");
+
+      const response = await fetch(
+        `/api/admin/products/${product.id}/status`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            is_active: newStatus,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.message || "Unable to update product status."
+        );
+      }
+
+      await loadProducts();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Something went wrong."
+      );
+    } finally {
+      setStatusUpdatingId(null);
+    }
+  };
 
   const filteredProducts = products.filter((product) =>
     `${product.name} ${product.product_categories?.name ?? ""}`
@@ -113,6 +161,7 @@ export default function AdminProductsPage() {
 
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={loadProducts}
               disabled={loading}
               className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-100 disabled:opacity-50"
@@ -122,6 +171,7 @@ export default function AdminProductsPage() {
             </button>
 
             <button
+              type="button"
               onClick={() => {
                 window.location.href = "/admin/products/add";
               }}
@@ -172,6 +222,7 @@ export default function AdminProductsPage() {
                 size={18}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
               />
+
               <input
                 type="text"
                 value={search}
@@ -192,9 +243,11 @@ export default function AdminProductsPage() {
                 size={40}
                 className="mx-auto text-slate-400"
               />
+
               <p className="mt-3 font-medium text-slate-700">
                 No products found
               </p>
+
               <p className="mt-1 text-sm text-slate-500">
                 Try another search.
               </p>
@@ -215,7 +268,10 @@ export default function AdminProductsPage() {
 
                 <tbody className="divide-y divide-slate-100">
                   {filteredProducts.map((product) => (
-                    <tr key={product.id} className="hover:bg-slate-50">
+                    <tr
+                      key={product.id}
+                      className="hover:bg-slate-50"
+                    >
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
                           {product.image_url ? (
@@ -237,6 +293,7 @@ export default function AdminProductsPage() {
                             <p className="font-semibold text-slate-800">
                               {product.name}
                             </p>
+
                             <p className="mt-1 text-xs text-slate-500">
                               {product.unit}
                             </p>
@@ -245,7 +302,8 @@ export default function AdminProductsPage() {
                       </td>
 
                       <td className="px-5 py-4 text-slate-600">
-                        {product.product_categories?.name ?? "Uncategorized"}
+                        {product.product_categories?.name ??
+                          "Uncategorized"}
                       </td>
 
                       <td className="px-5 py-4 font-semibold text-slate-800">
@@ -257,7 +315,9 @@ export default function AdminProductsPage() {
 
                       <td className="px-5 py-4">
                         <span
-                          className={`rounded-full px-3 py-1 text-xs font-semibold ${stockStyle(product)}`}
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${stockStyle(
+                            product
+                          )}`}
                         >
                           {stockLabel(product)}
                         </span>
@@ -296,11 +356,24 @@ export default function AdminProductsPage() {
 
                           <button
                             type="button"
-                            title="Delete product"
-                            disabled
-                            className="cursor-not-allowed rounded-lg border border-slate-200 p-2 text-slate-400"
+                            title={
+                              product.is_active
+                                ? "Deactivate product"
+                                : "Activate product"
+                            }
+                            onClick={() => handleStatusToggle(product)}
+                            disabled={statusUpdatingId === product.id}
+                            className={`rounded-lg border px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                              product.is_active
+                                ? "border-red-200 text-red-600 hover:bg-red-50"
+                                : "border-green-200 text-green-700 hover:bg-green-50"
+                            }`}
                           >
-                            <Trash2 size={16} />
+                            {statusUpdatingId === product.id
+                              ? "Updating..."
+                              : product.is_active
+                                ? "Deactivate"
+                                : "Activate"}
                           </button>
                         </div>
                       </td>

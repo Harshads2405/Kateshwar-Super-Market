@@ -3,6 +3,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import {
   ArrowLeft,
   Save,
@@ -74,11 +75,31 @@ export default function AddProductPage() {
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [loadingProduct, setLoadingProduct] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   const [form, setForm] = useState<ProductForm>(initialForm);
+
+  // Image upload states
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState("");
+
+  // Generate and clean up image preview URL
+  useEffect(() => {
+    if (!selectedImage) {
+      setImagePreview("");
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(selectedImage);
+    setImagePreview(previewUrl);
+
+    return () => {
+      URL.revokeObjectURL(previewUrl);
+    };
+  }, [selectedImage]);
 
   // Load categories and detect Add/Edit mode
   useEffect(() => {
@@ -175,6 +196,35 @@ export default function AddProductPage() {
     }));
   }
 
+  // Handle image selection and validation
+  function handleImageChange(file: File | null) {
+    setError("");
+
+    if (!file) {
+      return;
+    }
+
+    const allowedTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      setError("Only JPG, PNG and WebP images are allowed.");
+      return;
+    }
+
+    const maxFileSize = 5 * 1024 * 1024;
+
+    if (file.size === 0 || file.size > maxFileSize) {
+      setError("Image size must be smaller than 5 MB.");
+      return;
+    }
+
+    setSelectedImage(file);
+  }
+
   // Validate and submit product
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -208,7 +258,9 @@ export default function AddProductPage() {
       !Number.isFinite(quantityStep) ||
       quantityStep <= 0
     ) {
-      setError("Minimum quantity and quantity step must be greater than zero.");
+      setError(
+        "Minimum quantity and quantity step must be greater than zero."
+      );
       return;
     }
 
@@ -228,9 +280,40 @@ export default function AddProductPage() {
     setSaving(true);
 
     try {
+      let imageUrl = form.image_url;
+
+      // Upload selected image to Supabase Storage
+      if (selectedImage) {
+        setUploadingImage(true);
+
+        const imageFormData = new FormData();
+        imageFormData.append("file", selectedImage);
+
+        const uploadResponse = await fetch(
+          "/api/admin/products/upload",
+          {
+            method: "POST",
+            body: imageFormData,
+          }
+        );
+
+        const uploadResult = await uploadResponse.json();
+
+        if (!uploadResponse.ok || !uploadResult.success) {
+          throw new Error(
+            uploadResult.message || "Unable to upload product image."
+          );
+        }
+
+        imageUrl = uploadResult.image_url;
+        setUploadingImage(false);
+      }
+
+      // Prepare product payload
       const payload = {
         ...(productId ? { id: productId } : {}),
         ...form,
+        image_url: imageUrl,
         price,
         stock_quantity: stockQuantity,
         low_stock_threshold: lowStockThreshold,
@@ -238,6 +321,7 @@ export default function AddProductPage() {
         quantity_step: quantityStep,
       };
 
+      // Add or update product
       const response = await fetch("/api/admin/products", {
         method: productId ? "PATCH" : "POST",
         headers: {
@@ -273,6 +357,7 @@ export default function AddProductPage() {
       );
     } finally {
       setSaving(false);
+      setUploadingImage(false);
     }
   }
 
@@ -331,6 +416,7 @@ export default function AddProductPage() {
               size={30}
               className="mx-auto animate-spin text-green-700"
             />
+
             <p className="mt-3 text-sm text-slate-500">
               {loadingProduct
                 ? "Loading existing product details..."
@@ -459,22 +545,57 @@ export default function AddProductPage() {
               </h2>
 
               <label className="mb-2 block text-sm font-medium text-slate-700">
-                Image URL (optional)
+                Upload Product Image
               </label>
 
               <input
-                type="url"
-                value={form.image_url}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
                 onChange={(e) =>
-                  updateField("image_url", e.target.value)
+                  handleImageChange(e.target.files?.[0] ?? null)
                 }
-                placeholder="https://example.com/product-image.jpg"
-                className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none focus:border-green-600"
+                disabled={saving}
+                className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm file:mr-4 file:rounded-md file:border-0 file:bg-green-100 file:px-4 file:py-2 file:text-sm file:font-medium file:text-green-800"
               />
 
               <p className="mt-2 text-xs text-slate-500">
-                Actual image upload through Supabase Storage will be added separately.
+                Supported formats: JPG, PNG, WebP. Maximum size: 5 MB.
               </p>
+
+              {(imagePreview || form.image_url) && (
+                <div className="mt-5">
+                  <p className="mb-2 text-sm font-medium text-slate-700">
+                    Image Preview
+                  </p>
+
+                  <Image
+                    src={imagePreview || form.image_url}
+                    alt="Product preview"
+                    width={144}
+                    height={144}
+                    unoptimized
+                    className="h-36 w-36 rounded-xl border border-slate-200 object-cover"
+                  />
+                </div>
+              )}
+
+              <div className="mt-5 border-t border-slate-100 pt-4">
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  Or Enter Image URL
+                </label>
+
+                <input
+                  type="url"
+                  value={form.image_url}
+                  disabled={saving}
+                  onChange={(e) => {
+                    updateField("image_url", e.target.value);
+                    setSelectedImage(null);
+                  }}
+                  placeholder="https://example.com/product-image.jpg"
+                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none focus:border-green-600"
+                />
+              </div>
             </section>
 
             {/* Inventory */}
@@ -637,7 +758,11 @@ export default function AddProductPage() {
                 {saving ? (
                   <>
                     <Loader2 size={17} className="animate-spin" />
-                    {productId ? "Updating..." : "Saving..."}
+                    {uploadingImage
+                      ? "Uploading image..."
+                      : productId
+                        ? "Updating..."
+                        : "Saving..."}
                   </>
                 ) : (
                   <>

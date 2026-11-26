@@ -26,6 +26,7 @@ export async function GET() {
           slug
         )
       `)
+      .eq("is_active", true)
       .order("name", { ascending: true });
 
     if (error) {
