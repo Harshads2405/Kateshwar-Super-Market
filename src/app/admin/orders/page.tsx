@@ -155,6 +155,19 @@ export default function AdminOrdersPage() {
     }
   }
 
+  function getNextStatuses(currentStatus: string): string[] {
+  const transitions: Record<string, string[]> = {
+    New: ["Accepted", "Cancelled"],
+    Accepted: ["Packing", "Cancelled"],
+    Packing: ["Out for Delivery", "Cancelled"],
+    "Out for Delivery": ["Delivered"],
+    Delivered: [],
+    Cancelled: [],
+  };
+
+  return transitions[currentStatus] ?? [];
+}
+
   const filteredOrders =
     filter === "All"
       ? orders
@@ -321,35 +334,43 @@ export default function AdminOrdersPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-5">
-                  <label
-                    htmlFor={`status-${order.id}`}
-                    className="text-sm font-medium text-slate-700"
-                  >
-                    Update Order Status
-                  </label>
+                <div className="border-t border-slate-100 pt-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <label
+                      htmlFor={`status-${order.id}`}
+                      className="text-sm font-medium text-slate-700"
+                    >
+                      Update Order Status
+                    </label>
 
-                  <select
-                    id={`status-${order.id}`}
-                    value={order.status}
-                    disabled={updatingId === order.id}
-                    onChange={(event) =>
-                      void updateStatus(
-                        order.id,
-                        event.target.value as OrderStatus
-                      )
-                    }
-                    className="min-w-48 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm outline-none focus:border-green-600 disabled:opacity-50"
-                  >
-                    {statuses.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
+                    <select
+                      id={`status-${order.id}`}
+                      value={order.status}
+                      disabled={
+                        updatingId === order.id ||
+                        getNextStatuses(order.status).length === 0
+                      }
+                      onChange={(event) =>
+                        void updateStatus(
+                          order.id,
+                          event.target.value as OrderStatus
+                        )
+                      }
+                      className="min-w-48 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm outline-none focus:border-green-600 disabled:opacity-50"
+                    >
+                      <option value={order.status}>{order.status}</option>
 
-                  <div className="mt-5 border-t border-slate-100 pt-5">
-                    <h3 className="mb-4 font-semibold text-slate-800">
+                      {getNextStatuses(order.status).map((status) => (
+                        <option key={status} value={status}>
+                          {status}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Horizontal Order Status History */}
+                  <div className="mt-6 border-t border-slate-100 pt-5">
+                    <h3 className="mb-5 font-semibold text-slate-800">
                       Order Status History
                     </h3>
 
@@ -358,43 +379,45 @@ export default function AdminOrdersPage() {
                         No status history available.
                       </p>
                     ) : (
-                      <div className="space-y-4">
+                      <div className="flex gap-6 overflow-x-auto pb-3">
                         {[...order.order_status_history]
                           .sort(
                             (a, b) =>
                               new Date(a.changed_at).getTime() -
                               new Date(b.changed_at).getTime()
                           )
-                          .map((history) => (
+                          .map((history, index) => (
                             <div
                               key={history.id}
-                              className="flex gap-3"
+                              className="min-w-[220px] flex-1"
                             >
-                              <div className="mt-1 h-3 w-3 shrink-0 rounded-full bg-green-600" />
+                              <div className="mb-3 flex items-center">
+                                <div className="h-3 w-3 shrink-0 rounded-full bg-green-600" />
 
-                              <div>
-                                <p className="text-sm font-semibold text-slate-800">
-                                  {history.old_status
-                                    ? `${history.old_status} → ${history.new_status}`
-                                    : history.new_status}
-                                </p>
-
-                                <p className="mt-1 text-xs text-slate-500">
-                                  {new Date(history.changed_at).toLocaleString("en-IN")}
-                                </p>
-
-                                {history.reason && (
-                                  <p className="mt-1 text-xs text-slate-600">
-                                    {history.reason}
-                                  </p>
-                                )}
-
-                                {history.changed_by && (
-                                  <p className="mt-1 text-xs text-slate-400">
-                                    Admin ID: {history.changed_by}
-                                  </p>
-                                )}
+                                <div className="ml-2 h-px flex-1 bg-slate-200" />
                               </div>
+
+                              <p className="text-sm font-semibold text-slate-800">
+                                {history.old_status
+                                  ? `${history.old_status} → ${history.new_status}`
+                                  : history.new_status}
+                              </p>
+
+                              <p className="mt-2 text-xs text-slate-500">
+                                {new Date(history.changed_at).toLocaleString("en-IN")}
+                              </p>
+
+                              {history.reason && (
+                                <p className="mt-1 text-xs text-slate-600">
+                                  {history.reason}
+                                </p>
+                              )}
+
+                              {history.changed_by && (
+                                <p className="mt-1 break-all text-xs text-slate-400">
+                                  Admin ID: {history.changed_by}
+                                </p>
+                              )}
                             </div>
                           ))}
                       </div>
